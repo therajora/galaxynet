@@ -1,0 +1,60 @@
+{
+    "data": {
+        "data_source": "huggingface",
+        "data_dir": null,
+        "metadata_path": null,
+        "huggingface_repo": "rajora/galaxy-classification-sdss",
+        "image_size": 224,
+        "train_split": 0.8,
+        "batch_size": 32,
+        "num_workers": 2
+    },
+    "training": {
+        "num_epochs": 10,
+        "learning_rate": 0.001,
+        "weight_decay": 0.0001,
+        "scheduler": "cosine",
+        "scheduler_params": {
+            "T_max": 10,
+            "eta_min": 1e-05
+        },
+        "early_stopping": true,
+        "patience": 5,
+        "save_best": true
+    },
+    "optimizer": {
+        "name": "adamw",
+        "lr": 0.001,
+        "weight_decay": 0.0001,
+        "momentum": 0.9,
+        "betas": [
+            0.9,
+            0.999
+        ]
+    },
+    "loss": {
+        "name": "crossentropy",
+        "use_class_weights": true,
+        "label_smoothing": 0.1
+    },
+    "experiment": {
+        "experiment_name": "galaxy_resnet50_v1_kaggle",
+        "description": "ResNet-50v1 no Kaggle",
+        "random_seed": 42,
+        "device": "auto",
+        "mixed_precision": true
+    },
+    "logging": {
+        "log_dir": "/kaggle/working/galaxynet/results/logs",
+        "save_dir": "/kaggle/working/galaxynet/results/models",
+        "log_interval": 10,
+        "save_interval": 1,
+        "plot_training": true
+    },
+    "model": {
+        "name": "resnet50_v1",
+        "pretrained": true,
+        "freeze_backbone": false,
+        "dropout_rate": 0.3
+    }
+}

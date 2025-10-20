@@ -1,0 +1,83 @@
+GALAXY CLASSIFICATION - AUGMENTATION DATA SUMMARY
+==================================================
+
+Pipeline Completo SDSS e S-PLUS Executados com Sucesso!
+
+DADOS ORIGINAIS
+---------------
+SDSS (Sloan Digital Sky Survey):
+- Total: 10,847 imagens
+- Regular: 7,833 imagens (72.2%)
+- Irregular/Peculiar: 3,014 imagens (27.8%)
+
+S-PLUS (Southern Photometric Local Universe Survey):
+- Total: 787 imagens
+- Regular: 668 imagens (84.9%)
+- Irregular/Peculiar: 119 imagens (15.1%)
+
+DADOS APÓS AUGMENTAÇÃO E BALANCEAMENTO
+--------------------------------------
+SDSS Processado:
+- Total: 79,539 imagens
+- Regular: 46,998 imagens (59.1%)
+- Irregular/Peculiar: 32,541 imagens (40.9%)
+
+S-PLUS Processado:
+- Total: 6,150 imagens
+- Regular: 4,008 imagens (65.2%)
+- Irregular/Peculiar: 2,142 imagens (34.8%)
+
+AUGMENTAÇÕES CRIADAS
+-------------------
+SDSS:
+- Imagens originais augmentadas: 54,235
+- Imagens para balanceamento: 14,457 (classe irr_pec)
+- Total de augmentações SDSS: 68,692
+
+S-PLUS:
+- Imagens originais augmentadas: 3,935
+- Imagens para balanceamento: 1,428 (classe irr_pec)
+- Total de augmentações S-PLUS: 5,363
+
+ESTRATÉGIA UTILIZADA
+-------------------
+- Augmentações por imagem: 5
+- Estratégia de balanceamento: custom
+- Seed para reprodutibilidade: 42
+
+ESTRUTURA DE DADOS
+------------------
+data/complete_sdss/
+├── reg/                    - 46,998 imagens
+└── irr_pec/               - 32,541 imagens
+
+data/complete_splus/
+├── reg/                    - 4,008 imagens
+└── irr_pec/               - 2,142 imagens
+
+TRANSFORMAÇÕES APLICADAS
+-----------------------
+- Horizontal/Vertical Flip
+- Rotação, escala e translação
+- Ajuste de brilho e contraste
+- Ruído gaussiano
+- Desfoque de movimento
+
+RESULTADO DO BALANCEAMENTO
+-------------------------
+SDSS:
+- Classe Regular: Reduzida de 72.2% para 59.1%
+- Classe Irregular/Peculiar: Aumentada de 27.8% para 40.9%
+
+S-PLUS:
+- Classe Regular: Reduzida de 84.9% para 65.2%
+- Classe Irregular/Peculiar: Aumentada de 15.1% para 34.8%
+
+TOTAL GERAL
+-----------
+- Imagens originais: 11,634
+- Imagens processadas: 85,689
+- Total de augmentações: 74,055
+- Balanceamento: Melhorado significativamente em ambos os surveys
+
+Última atualização: 2 de fevereiro de 2025

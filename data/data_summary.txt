@@ -1,0 +1,37 @@
+GALAXY CLASSIFICATION DATA SUMMARY
+=====================================
+
+Total de imagens: 11,634
+
+SDSS (Sloan Digital Sky Survey)
+-------------------------------
+Regular: 7,833 imagens
+Irregular/Peculiar: 3,014 imagens
+Subtotal SDSS: 10,847 imagens
+
+S-PLUS (Southern Photometric Local Universe Survey)
+---------------------------------------------------
+Regular: 668 imagens
+Irregular/Peculiar: 119 imagens
+Subtotal S-PLUS: 787 imagens
+
+Distribuição por classe
+-----------------------
+Regular (reg): 8,501 imagens (73.1%)
+Irregular/Peculiar (irr_pec): 3,133 imagens (26.9%)
+
+Estrutura de pastas
+-------------------
+data/images/sdss/reg/          - 7,833 imagens
+data/images/sdss/irr_pec/      - 3,014 imagens
+data/images/splus/reg/         - 668 imagens
+data/images/splus/irr_pec/     - 119 imagens
+
+Arquivos de dados
+-----------------
+data/csv/rc3_raw.csv           - Dados brutos das galáxias
+data/csv/rc3_classified.csv    - Dados classificados
+data/logs/sdss_download_log.txt - Log de downloads SDSS
+data/logs/splus_download_log.txt - Log de downloads S-PLUS
+
+Última atualização: 15 de janeiro de 2025
