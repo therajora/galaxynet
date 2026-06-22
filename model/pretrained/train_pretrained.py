@@ -302,6 +302,136 @@ def create_model(config_manager: ConfigManager, num_classes: int) -> torch.nn.Mo
     return model
 
 
+def run_pretrained_entry(
+    *,
+    config_path: str,
+    device: str,
+    seed: int,
+    validate_only: bool,
+) -> dict:
+    """Run the pretrained training flow and return a structured summary."""
+    setup_seeds(seed)
+
+    print(f"Loading configuration from: {config_path}")
+    config_manager = ConfigManager(config_path)
+
+    print("Validating configuration...")
+    errors = config_manager.validate_config()
+    if errors:
+        print("Errors found in configuration:")
+        for error in errors:
+            print(f"  - {error}")
+        return {
+            "success": False,
+            "message": "Configuration validation failed!",
+            "output_dir": None,
+            "artifacts_path": None,
+            "metrics_path": None,
+        }
+
+    print("Configuration valid!")
+    config_manager.print_config()
+
+    if validate_only:
+        print("Validation completed successfully!")
+        return {
+            "success": True,
+            "message": "Validation completed successfully!",
+            "output_dir": None,
+            "artifacts_path": None,
+            "metrics_path": None,
+        }
+
+    training_device = setup_device(device)
+
+    dataset = load_dataset(config_manager)
+
+    if hasattr(dataset, 'classes'):
+        num_classes = len(dataset.classes)
+    elif hasattr(dataset, 'hf_dataset'):
+        labels = set()
+        for i in range(min(1000, len(dataset))):
+            _, label = dataset[i]
+            labels.add(label)
+        num_classes = len(labels)
+        print(f"Number of classes detected: {num_classes}")
+    else:
+        num_classes = 2
+        print(f"Using default number of classes: {num_classes}")
+
+    model = create_model(config_manager, num_classes)
+
+    data_config = config_manager.get_data_config()
+    print(f"Creating DataLoaders...")
+    train_loader, val_loader = create_data_loaders(
+        dataset=dataset,
+        batch_size=data_config.batch_size,
+        train_split=data_config.train_split,
+        num_workers=data_config.num_workers,
+        random_seed=seed
+    )
+
+    loss_config = config_manager.get_loss_config()
+    class_weights = None
+    if loss_config.use_class_weights:
+        if hasattr(dataset, 'get_class_weights'):
+            class_weights = dataset.get_class_weights()
+            print(f"Using class weights: {class_weights}")
+        else:
+            print("Dataset does not support class weights, using uniform weights")
+
+    print(f"Initializing trainer...")
+    trainer = PretrainedTrainer(
+        model=model,
+        model_config=config_manager.get_model_config(),
+        data_config=config_manager.get_data_config(),
+        training_config=config_manager.get_training_config(),
+        optimizer_config=config_manager.get_optimizer_config(),
+        loss_config=config_manager.get_loss_config(),
+        experiment_config=config_manager.get_experiment_config(),
+        logging_config=config_manager.get_logging_config(),
+        device=training_device
+    )
+
+    print(f"Starting training...")
+    trainer.train(
+        train_loader=train_loader,
+        val_loader=val_loader,
+        class_weights=class_weights
+    )
+
+    print(f"Training completed successfully!")
+    print(f"Best accuracy: {trainer.best_val_acc:.2f}% (Epoch {trainer.best_epoch})")
+
+    print("Calculating complete metrics...")
+    complete_metrics = calculate_complete_metrics(
+        model=trainer.model,
+        val_loader=val_loader,
+        device=training_device,
+        model_name=config_manager.get_model_config().name
+    )
+
+    from model.pretrained.upload_model import save_training_metrics
+    metrics_path = save_training_metrics(
+        model_name=config_manager.get_model_config().name,
+        metrics=complete_metrics,
+        output_dir=config_manager.get_logging_config().save_dir.replace("models", "metrics")
+    )
+
+    print(f"Metrics saved to: {metrics_path}")
+    print(f"Final accuracy: {complete_metrics['accuracy']:.4f}")
+    print(f"F1-Score: {complete_metrics['f1_score']:.4f}")
+    print(f"ROC-AUC: {complete_metrics['roc_auc']:.4f}")
+
+    return {
+        "success": True,
+        "message": "Training completed successfully!",
+        "output_dir": config_manager.get_logging_config().save_dir,
+        "artifacts_path": None,
+        "metrics_path": metrics_path,
+    }
+
+
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(
@@ -339,125 +469,14 @@ def main():
     )
     
     args = parser.parse_args()
-    
-    # Set seeds
-    setup_seeds(args.seed)
-    
-    # Load configuration
-    print(f"Loading configuration from: {args.config}")
-    config_manager = ConfigManager(args.config)
-    
-    # Validate configuration
-    print("Validating configuration...")
-    errors = config_manager.validate_config()
-    if errors:
-        print("Errors found in configuration:")
-        for error in errors:
-            print(f"  - {error}")
-        return 1
-    
-    print("Configuration valid!")
-    
-    # Show configuration
-    config_manager.print_config()
-    
-    if args.validate_only:
-        print("Validation completed successfully!")
-        return 0
-    
-    # Set up device
-    device = setup_device(args.device)
-    
-    # Load dataset
-    dataset = load_dataset(config_manager)
-    
-    # Create model
-    # Determine number of classes
-    if hasattr(dataset, 'classes'):
-        num_classes = len(dataset.classes)
-    elif hasattr(dataset, 'hf_dataset'):
-        # For HuggingFaceDataset, count unique classes
-        labels = set()
-        for i in range(min(1000, len(dataset))):  # Sample to determine classes
-            _, label = dataset[i]
-            labels.add(label)
-        num_classes = len(labels)
-        print(f"Number of classes detected: {num_classes}")
-    else:
-        num_classes = 2  # Default for binary classification
-        print(f"Using default number of classes: {num_classes}")
-    
-    model = create_model(config_manager, num_classes)
-    
-    # Create DataLoaders
-    data_config = config_manager.get_data_config()
-    print(f"Creating DataLoaders...")
-    train_loader, val_loader = create_data_loaders(
-        dataset=dataset,
-        batch_size=data_config.batch_size,
-        train_split=data_config.train_split,
-        num_workers=data_config.num_workers,
-        random_seed=args.seed
+
+    result = run_pretrained_entry(
+        config_path=args.config,
+        device=args.device,
+        seed=args.seed,
+        validate_only=args.validate_only,
     )
-    
-    # Calculate class weights if necessary
-    loss_config = config_manager.get_loss_config()
-    class_weights = None
-    if loss_config.use_class_weights:
-        if hasattr(dataset, 'get_class_weights'):
-            class_weights = dataset.get_class_weights()
-            print(f"Using class weights: {class_weights}")
-        else:
-            print("Dataset does not support class weights, using uniform weights")
-    
-    # Create trainer
-    print(f"Initializing trainer...")
-    trainer = PretrainedTrainer(
-        model=model,
-        model_config=config_manager.get_model_config(),
-        data_config=config_manager.get_data_config(),
-        training_config=config_manager.get_training_config(),
-        optimizer_config=config_manager.get_optimizer_config(),
-        loss_config=config_manager.get_loss_config(),
-        experiment_config=config_manager.get_experiment_config(),
-        logging_config=config_manager.get_logging_config(),
-        device=device
-    )
-    
-    # Execute training
-    print(f"Starting training...")
-    history = trainer.train(
-        train_loader=train_loader,
-        val_loader=val_loader,
-        class_weights=class_weights
-    )
-    
-    print(f"Training completed successfully!")
-    print(f"Best accuracy: {trainer.best_val_acc:.2f}% (Epoch {trainer.best_epoch})")
-    
-    # Calculate complete metrics on validation set
-    print("Calculating complete metrics...")
-    complete_metrics = calculate_complete_metrics(
-        model=trainer.model,
-        val_loader=val_loader,
-        device=device,
-        model_name=config_manager.get_model_config().name
-    )
-    
-    # Save metrics in standardized format
-    from model.pretrained.upload_model import save_training_metrics
-    metrics_path = save_training_metrics(
-        model_name=config_manager.get_model_config().name,
-        metrics=complete_metrics,
-        output_dir=config_manager.get_logging_config().save_dir.replace("models", "metrics")
-    )
-    
-    print(f"Metrics saved to: {metrics_path}")
-    print(f"Final accuracy: {complete_metrics['accuracy']:.4f}")
-    print(f"F1-Score: {complete_metrics['f1_score']:.4f}")
-    print(f"ROC-AUC: {complete_metrics['roc_auc']:.4f}")
-    
-    return 0
+    return 0 if result["success"] else 1
 
 
 if __name__ == "__main__":
