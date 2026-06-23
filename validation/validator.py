@@ -27,6 +27,8 @@ sys.path.insert(0, str(project_root))
 from model.pretrained.model_factory import create_pretrained_model, get_model_info
 from model.pretrained.dataset import GalaxyPretrainedDataset, get_imagenet_transforms
 from validation.metrics import ClassificationMetrics, plot_confusion_matrix, plot_roc_curve
+from validation.validation_persistence import save_validation_outputs
+from validation.validation_runner import run_validation_batches
 
 
 class ModelValidator:
@@ -118,32 +120,15 @@ class ModelValidator:
             Dictionary with metrics and results
         """
         print(f"\nStarting validation of model {self.model_name}...")
-        
-        # Lists to store predictions
-        all_predictions = []
-        all_probabilities = []
-        all_labels = []
-        
-        # Validation
-        with torch.no_grad():
-            for batch_idx, (images, labels) in enumerate(tqdm(test_loader, desc="Validating")):
-                images = images.to(self.device)
-                labels = labels.to(self.device)
-                
-                # Forward pass
-                outputs = self.model(images)
-                probabilities = torch.softmax(outputs, dim=1)
-                predictions = torch.argmax(outputs, dim=1)
-                
-                # Store results
-                all_predictions.extend(predictions.cpu().numpy())
-                all_probabilities.extend(probabilities.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
-        
-        # Convert to numpy
-        y_true = np.array(all_labels)
-        y_pred = np.array(all_predictions)
-        y_prob = np.array(all_probabilities)
+
+        raw_outputs = run_validation_batches(
+            model=self.model,
+            test_loader=test_loader,
+            device=self.device,
+        )
+        y_true = raw_outputs["y_true"]
+        y_pred = raw_outputs["y_pred"]
+        y_prob = raw_outputs["y_prob"]
         
         print(f"Validation completed: {len(y_true)} samples")
         
@@ -160,32 +145,22 @@ class ModelValidator:
                 output_dir = Path("validation_results") / self.model_name
             else:
                 output_dir = Path(output_dir)
-            
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Save metrics
-            metrics_calculator.save_metrics(output_dir / "metrics.json")
-            
-            # Save predictions
-            results = {
-                'model_name': self.model_name,
-                'model_path': str(self.model_path),
-                'num_samples': len(y_true),
-                'predictions': y_pred.tolist(),
-                'probabilities': y_prob.tolist(),
-                'true_labels': y_true.tolist(),
-                'class_names': self.class_names
-            }
-            
-            with open(output_dir / "predictions.json", 'w') as f:
-                json.dump(results, f, indent=4)
-            
-            # Generate visualizations
-            self._generate_visualizations(
-                metrics_calculator, 
-                output_dir
+
+            save_validation_outputs(
+                output_dir=output_dir,
+                model_name=self.model_name,
+                model_path=str(self.model_path),
+                class_names=self.class_names,
+                y_true=y_true.tolist(),
+                y_pred=y_pred.tolist(),
+                y_prob=y_prob.tolist(),
+                metrics_calculator=metrics_calculator,
+                generate_visualizations=lambda **kwargs: self._generate_visualizations(
+                    kwargs["metrics_calculator"],
+                    kwargs["output_dir"],
+                ),
             )
-            
+
             print(f"Results saved to: {output_dir}")
         
         return {
