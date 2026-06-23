@@ -24,8 +24,9 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from model.pretrained.model_factory import create_pretrained_model, get_model_info
+from model.pretrained.model_factory import get_model_info
 from model.pretrained.dataset import GalaxyPretrainedDataset, get_imagenet_transforms
+from validation.model_loader import load_trained_model
 from validation.metrics import ClassificationMetrics, plot_confusion_matrix, plot_roc_curve
 from validation.validation_persistence import save_validation_outputs
 from validation.validation_runner import run_validation_batches
@@ -80,27 +81,12 @@ class ModelValidator:
         Returns:
             Loaded PyTorch model
         """
-        if not self.model_path.exists():
-            raise FileNotFoundError(f"Model file not found: {self.model_path}")
-        
-        # Create model with correct architecture
-        model = create_pretrained_model(
+        return load_trained_model(
             model_name=self.model_name,
+            model_path=self.model_path,
             num_classes=self.num_classes,
-            pretrained=False  # Don't load pre-trained weights, just the architecture
+            device=self.device,
         )
-        
-        # Load trained weights
-        checkpoint = torch.load(self.model_path, map_location=self.device)
-        
-        # If checkpoint contains 'model_state_dict', use it
-        if 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-        else:
-            # Assume file contains state_dict directly
-            model.load_state_dict(checkpoint)
-        
-        return model
     
     def validate_dataset(
         self,

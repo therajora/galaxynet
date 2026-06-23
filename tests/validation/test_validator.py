@@ -2,6 +2,8 @@ import importlib
 import sys
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 try:
     import numpy as np
 except ModuleNotFoundError:
@@ -33,6 +35,40 @@ def _stub_module(name: str, **attributes):
         setattr(module, key, value)
     sys.modules[name] = module
     return module
+
+
+@pytest.fixture(autouse=True)
+def _restore_stubbed_modules():
+    module_names = [
+        "torch",
+        "torch.nn",
+        "torch.utils",
+        "torch.utils.data",
+        "numpy",
+        "matplotlib",
+        "matplotlib.pyplot",
+        "tqdm",
+        "model",
+        "model.pretrained",
+        "model.pretrained.model_factory",
+        "model.pretrained.dataset",
+        "validation.metrics",
+        "validation.benchmark",
+        "validation.visualization",
+        "validation.validator",
+    ]
+    original_modules = {
+        name: sys.modules.get(name)
+        for name in module_names
+    }
+
+    yield
+
+    for name, module in original_modules.items():
+        if module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = module
 
 
 class FakeTensor:
@@ -258,3 +294,79 @@ def test_validate_dataset_preserves_public_result_shape(monkeypatch):
         "probabilities",
         "true_labels",
     ]
+
+
+def test_model_validator_loads_model_via_model_loader(monkeypatch, tmp_path):
+    validator_module = _load_validator_module()
+
+    calls = {}
+
+    class FakeLoadedModel:
+        def to(self, device):
+            calls["to_device"] = device
+            return self
+
+        def eval(self):
+            calls["eval_called"] = True
+            return self
+
+    def fake_load_trained_model(**kwargs):
+        calls["loader_kwargs"] = kwargs
+        return FakeLoadedModel()
+
+    monkeypatch.setattr(
+        validator_module,
+        "load_trained_model",
+        fake_load_trained_model,
+        raising=False,
+    )
+
+    validator_module.ModelValidator(
+        model_name="efficientnet_b0",
+        model_path=tmp_path / "best_model.pth",
+        device="cpu",
+        class_names=["Regular", "Peculiar"],
+    )
+
+    assert calls["loader_kwargs"] == {
+        "model_name": "efficientnet_b0",
+        "model_path": tmp_path / "best_model.pth",
+        "num_classes": 2,
+        "device": "cpu",
+    }
+    assert calls["to_device"] == "cpu"
+    assert calls["eval_called"] is True
+
+
+def test_model_validator_preserves_public_initialization_flow(monkeypatch, tmp_path):
+    validator_module = _load_validator_module()
+
+    calls = {}
+
+    class FakeLoadedModel:
+        def to(self, device):
+            calls["to_device"] = device
+            return self
+
+        def eval(self):
+            calls["eval_called"] = True
+            return self
+
+    monkeypatch.setattr(
+        validator_module,
+        "load_trained_model",
+        lambda **kwargs: FakeLoadedModel(),
+        raising=False,
+    )
+
+    validator = validator_module.ModelValidator(
+        model_name="efficientnet_b0",
+        model_path=tmp_path / "best_model.pth",
+        device="cpu",
+        class_names=["Regular", "Peculiar"],
+    )
+
+    assert validator.model_name == "efficientnet_b0"
+    assert validator.class_names == ["Regular", "Peculiar"]
+    assert calls["to_device"] == "cpu"
+    assert calls["eval_called"] is True
