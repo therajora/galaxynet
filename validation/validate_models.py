@@ -7,12 +7,10 @@ Allows:
 - Generate comparison reports
 """
 
-import argparse
 import sys
-import os
 import torch
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 # Add root directory to path
 project_root = Path(__file__).parent.parent
@@ -21,6 +19,95 @@ sys.path.insert(0, str(project_root))
 from model.pretrained.dataset import GalaxyPretrainedDataset, create_data_loaders, get_imagenet_transforms
 from validation.validator import ModelValidator
 from validation.benchmark import ModelBenchmark
+from validation.validation_cli import main as validation_main
+
+CLASS_NAMES = ["Regular", "Peculiar"]
+
+
+def resolve_device(device: str):
+    """Resolve the runtime device preserving the current CLI behavior."""
+    if device == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(device)
+
+
+def build_test_loader(data_dir: str):
+    """Build the default validation loader used by single and benchmark flows."""
+    transforms = get_imagenet_transforms(224, is_train=False)
+    test_dataset = GalaxyPretrainedDataset(
+        img_dir=data_dir,
+        metadata_path=None,
+        transform=transforms,
+    )
+    return torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=32,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+    )
+
+
+def validate_single_entry(
+    *,
+    model_name: str,
+    model_path: str,
+    data_dir: str,
+    output_dir: str,
+    device: str,
+) -> Dict:
+    """Run single-model validation and return a structured payload."""
+    print(f"Validating model: {model_name}")
+
+    resolved_device = resolve_device(device)
+    test_loader = build_test_loader(data_dir)
+    validator = ModelValidator(
+        model_name=model_name,
+        model_path=model_path,
+        device=resolved_device,
+        class_names=CLASS_NAMES,
+    )
+    validator.validate_dataset(
+        test_loader=test_loader,
+        save_results=True,
+        output_dir=output_dir,
+    )
+    return {
+        "success": True,
+        "message": "Validation completed successfully!",
+        "output_dir": output_dir,
+        "results_path": f"{output_dir}/metrics.json",
+        "model_paths": None,
+    }
+
+
+def run_benchmark_entry(
+    *,
+    model_paths: Dict[str, str],
+    data_dir: str,
+    output_dir: str,
+    device: str,
+) -> Dict:
+    """Run the benchmark flow and return a structured payload."""
+    print(f"Running benchmark of {len(model_paths)} models...")
+
+    resolved_device = resolve_device(device)
+    test_loader = build_test_loader(data_dir)
+    benchmark = ModelBenchmark(
+        test_loader=test_loader,
+        class_names=CLASS_NAMES,
+        device=resolved_device,
+        output_dir=output_dir,
+    )
+    benchmark.run_benchmark(model_paths, save_results=True)
+    benchmark.print_summary()
+    return {
+        "success": True,
+        "message": "Benchmark completed successfully!",
+        "output_dir": output_dir,
+        "results_path": f"{output_dir}/benchmark_comparison.csv",
+        "model_paths": model_paths,
+    }
 
 
 def validate_single_model(
@@ -44,45 +131,23 @@ def validate_single_model(
         Validation results
     """
     print(f"Validating model: {model_name}")
-    
-    # Configure device
-    if device == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(device)
-    
-    # Create test dataset
-    transforms = get_imagenet_transforms(224, is_train=False)
-    test_dataset = GalaxyPretrainedDataset(
-        img_dir=data_dir,
-        metadata_path=None,
-        transform=transforms
-    )
-    
-    # Create DataLoader (use entire dataset as test)
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset,
-        batch_size=32,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True
-    )
-    
-    # Create validator
+
+    resolved_device = resolve_device(device)
+    test_loader = build_test_loader(data_dir)
+
     validator = ModelValidator(
         model_name=model_name,
         model_path=model_path,
-        device=device,
-        class_names=['Regular', 'Peculiar']
+        device=resolved_device,
+        class_names=CLASS_NAMES,
     )
-    
-    # Execute validation
+
     results = validator.validate_dataset(
         test_loader=test_loader,
         save_results=True,
-        output_dir=output_dir
+        output_dir=output_dir,
     )
-    
+
     return results
 
 
@@ -102,42 +167,20 @@ def run_benchmark(
         device: Device
     """
     print(f"Running benchmark of {len(model_paths)} models...")
-    
-    # Configure device
-    if device == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(device)
-    
-    # Create test dataset
-    transforms = get_imagenet_transforms(224, is_train=False)
-    test_dataset = GalaxyPretrainedDataset(
-        img_dir=data_dir,
-        metadata_path=None,
-        transform=transforms
-    )
-    
-    # Create DataLoader
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset,
-        batch_size=32,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True
-    )
-    
-    # Create benchmark
+
+    resolved_device = resolve_device(device)
+    test_loader = build_test_loader(data_dir)
+
     benchmark = ModelBenchmark(
         test_loader=test_loader,
-        class_names=['Regular', 'Peculiar'],
-        device=device,
-        output_dir=output_dir
+        class_names=CLASS_NAMES,
+        device=resolved_device,
+        output_dir=output_dir,
     )
-    
-    # Execute benchmark
+
     results_df = benchmark.run_benchmark(model_paths, save_results=True)
     benchmark.print_summary()
-    
+
     return results_df
 
 
@@ -172,75 +215,8 @@ def find_trained_models(results_dir: str = "results/models") -> Dict[str, str]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Galaxy classification model validation")
-    
-    # Operation mode
-    parser.add_argument("--mode", choices=["single", "benchmark", "find"], required=True,
-                       help="Operation mode: single (one model), benchmark (multiple), find (find models)")
-    
-    # Parameters for individual validation
-    parser.add_argument("--model-name", type=str, help="Model name for individual validation")
-    parser.add_argument("--model-path", type=str, help="Model path for individual validation")
-    
-    # General parameters
-    parser.add_argument("--data-dir", type=str, default="data/complete_sdss",
-                       help="Test data directory")
-    parser.add_argument("--output-dir", type=str, help="Output directory")
-    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"],
-                       help="Device for validation")
-    parser.add_argument("--results-dir", type=str, default="results/models",
-                       help="Results directory to find models")
-    
-    args = parser.parse_args()
-    
-    if args.mode == "single":
-        if not args.model_name or not args.model_path:
-            print("For 'single' mode, --model-name and --model-path are required")
-            return
-        
-        output_dir = args.output_dir or f"validation_results/{args.model_name}"
-        
-        try:
-            results = validate_single_model(
-                model_name=args.model_name,
-                model_path=args.model_path,
-                data_dir=args.data_dir,
-                output_dir=output_dir,
-                device=args.device
-            )
-            print(f"Validation completed successfully!")
-            
-        except Exception as e:
-            print(f"Error during validation: {e}")
-    
-    elif args.mode == "benchmark":
-        # Find models automatically
-        model_paths = find_trained_models(args.results_dir)
-        
-        if not model_paths:
-            print("No trained models found")
-            return
-        
-        output_dir = args.output_dir or "benchmark_results"
-        
-        try:
-            results_df = run_benchmark(
-                model_paths=model_paths,
-                data_dir=args.data_dir,
-                output_dir=output_dir,
-                device=args.device
-            )
-            print(f"Benchmark completed successfully!")
-            
-        except Exception as e:
-            print(f"Error during benchmark: {e}")
-    
-    elif args.mode == "find":
-        model_paths = find_trained_models(args.results_dir)
-        if model_paths:
-            print(f"\nTo run benchmark with these models:")
-            print(f"python validation/validate_models.py --mode benchmark --data-dir {args.data_dir}")
+    return validation_main()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
