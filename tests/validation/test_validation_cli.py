@@ -211,6 +211,120 @@ def test_validate_models_main_delegates_to_validation_cli(monkeypatch):
     assert calls["argv"] is None
 
 
+def test_validate_single_public_functions_delegate_to_shared_helper(monkeypatch):
+    import validation.validate_models as validate_models
+
+    calls = []
+
+    def fake_run_single_validation(**kwargs):
+        calls.append(kwargs)
+        return {"metrics": {"accuracy": 0.9}, "predictions": [1, 0]}
+
+    monkeypatch.setattr(
+        validate_models,
+        "_run_single_validation",
+        fake_run_single_validation,
+        raising=False,
+    )
+
+    entry_result = validate_models.validate_single_entry(
+        model_name="efficientnet_b0",
+        model_path="results/models/efficientnet_b0/best_model.pth",
+        data_dir="data/complete_sdss",
+        output_dir="validation_results/efficientnet_b0",
+        device="cpu",
+    )
+    legacy_result = validate_models.validate_single_model(
+        model_name="efficientnet_b0",
+        model_path="results/models/efficientnet_b0/best_model.pth",
+        data_dir="data/complete_sdss",
+        output_dir="validation_results/efficientnet_b0",
+        device="cpu",
+    )
+
+    assert entry_result == {
+        "success": True,
+        "message": "Validation completed successfully!",
+        "output_dir": "validation_results/efficientnet_b0",
+        "results_path": "validation_results/efficientnet_b0/metrics.json",
+        "model_paths": None,
+    }
+    assert legacy_result == {"metrics": {"accuracy": 0.9}, "predictions": [1, 0]}
+    assert calls == [
+        {
+            "model_name": "efficientnet_b0",
+            "model_path": "results/models/efficientnet_b0/best_model.pth",
+            "data_dir": "data/complete_sdss",
+            "output_dir": "validation_results/efficientnet_b0",
+            "device": "cpu",
+        },
+        {
+            "model_name": "efficientnet_b0",
+            "model_path": "results/models/efficientnet_b0/best_model.pth",
+            "data_dir": "data/complete_sdss",
+            "output_dir": "validation_results/efficientnet_b0",
+            "device": "cpu",
+        },
+    ]
+
+
+def test_benchmark_public_functions_delegate_to_shared_helper(monkeypatch):
+    import validation.validate_models as validate_models
+
+    calls = []
+
+    def fake_run_benchmark_validation(**kwargs):
+        calls.append(kwargs)
+        return "dataframe-sentinel"
+
+    monkeypatch.setattr(
+        validate_models,
+        "_run_benchmark_validation",
+        fake_run_benchmark_validation,
+        raising=False,
+    )
+
+    entry_result = validate_models.run_benchmark_entry(
+        model_paths={"resnet50_v1": "results/models/resnet50_v1/best_model.pth"},
+        data_dir="data/complete_sdss",
+        output_dir="benchmark_results",
+        device="cpu",
+    )
+    legacy_result = validate_models.run_benchmark(
+        model_paths={"resnet50_v1": "results/models/resnet50_v1/best_model.pth"},
+        data_dir="data/complete_sdss",
+        output_dir="benchmark_results",
+        device="cpu",
+    )
+
+    assert entry_result == {
+        "success": True,
+        "message": "Benchmark completed successfully!",
+        "output_dir": "benchmark_results",
+        "results_path": "benchmark_results/benchmark_comparison.csv",
+        "model_paths": {"resnet50_v1": "results/models/resnet50_v1/best_model.pth"},
+    }
+    assert legacy_result == "dataframe-sentinel"
+    assert calls == [
+        {
+            "model_paths": {
+                "resnet50_v1": "results/models/resnet50_v1/best_model.pth"
+            },
+            "data_dir": "data/complete_sdss",
+            "output_dir": "benchmark_results",
+            "device": "cpu",
+        },
+        {
+            "model_paths": {
+                "resnet50_v1": "results/models/resnet50_v1/best_model.pth"
+            },
+            "data_dir": "data/complete_sdss",
+            "output_dir": "benchmark_results",
+            "device": "cpu",
+        },
+    ]
+
+
 def test_validation_cli_runs_as_script_from_repo_root():
     result = subprocess.run(
         [sys.executable, "validation/validation_cli.py", "benchmark", "--help"],

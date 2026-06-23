@@ -10,7 +10,7 @@ Allows:
 import sys
 import torch
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 # Add root directory to path
 project_root = Path(__file__).parent.parent
@@ -48,15 +48,14 @@ def build_test_loader(data_dir: str):
     )
 
 
-def validate_single_entry(
+def _run_single_validation(
     *,
     model_name: str,
     model_path: str,
     data_dir: str,
     output_dir: str,
     device: str,
-) -> Dict:
-    """Run single-model validation and return a structured payload."""
+):
     print(f"Validating model: {model_name}")
 
     resolved_device = resolve_device(device)
@@ -67,10 +66,28 @@ def validate_single_entry(
         device=resolved_device,
         class_names=CLASS_NAMES,
     )
-    validator.validate_dataset(
+    return validator.validate_dataset(
         test_loader=test_loader,
         save_results=True,
         output_dir=output_dir,
+    )
+
+
+def validate_single_entry(
+    *,
+    model_name: str,
+    model_path: str,
+    data_dir: str,
+    output_dir: str,
+    device: str,
+) -> Dict:
+    """Run single-model validation and return a structured payload."""
+    _run_single_validation(
+        model_name=model_name,
+        model_path=model_path,
+        data_dir=data_dir,
+        output_dir=output_dir,
+        device=device,
     )
     return {
         "success": True,
@@ -81,14 +98,13 @@ def validate_single_entry(
     }
 
 
-def run_benchmark_entry(
+def _run_benchmark_validation(
     *,
     model_paths: Dict[str, str],
     data_dir: str,
     output_dir: str,
     device: str,
-) -> Dict:
-    """Run the benchmark flow and return a structured payload."""
+) -> Any:
     print(f"Running benchmark of {len(model_paths)} models...")
 
     resolved_device = resolve_device(device)
@@ -99,8 +115,25 @@ def run_benchmark_entry(
         device=resolved_device,
         output_dir=output_dir,
     )
-    benchmark.run_benchmark(model_paths, save_results=True)
+    results = benchmark.run_benchmark(model_paths, save_results=True)
     benchmark.print_summary()
+    return results
+
+
+def run_benchmark_entry(
+    *,
+    model_paths: Dict[str, str],
+    data_dir: str,
+    output_dir: str,
+    device: str,
+) -> Dict:
+    """Run the benchmark flow and return a structured payload."""
+    _run_benchmark_validation(
+        model_paths=model_paths,
+        data_dir=data_dir,
+        output_dir=output_dir,
+        device=device,
+    )
     return {
         "success": True,
         "message": "Benchmark completed successfully!",
@@ -130,25 +163,13 @@ def validate_single_model(
     Returns:
         Validation results
     """
-    print(f"Validating model: {model_name}")
-
-    resolved_device = resolve_device(device)
-    test_loader = build_test_loader(data_dir)
-
-    validator = ModelValidator(
+    return _run_single_validation(
         model_name=model_name,
         model_path=model_path,
-        device=resolved_device,
-        class_names=CLASS_NAMES,
-    )
-
-    results = validator.validate_dataset(
-        test_loader=test_loader,
-        save_results=True,
+        data_dir=data_dir,
         output_dir=output_dir,
+        device=device,
     )
-
-    return results
 
 
 def run_benchmark(
@@ -156,7 +177,7 @@ def run_benchmark(
     data_dir: str,
     output_dir: str = "benchmark_results",
     device: str = "auto"
-) -> None:
+) -> Any:
     """
     Run benchmark of multiple models.
     
@@ -166,22 +187,12 @@ def run_benchmark(
         output_dir: Output directory
         device: Device
     """
-    print(f"Running benchmark of {len(model_paths)} models...")
-
-    resolved_device = resolve_device(device)
-    test_loader = build_test_loader(data_dir)
-
-    benchmark = ModelBenchmark(
-        test_loader=test_loader,
-        class_names=CLASS_NAMES,
-        device=resolved_device,
+    return _run_benchmark_validation(
+        model_paths=model_paths,
+        data_dir=data_dir,
         output_dir=output_dir,
+        device=device,
     )
-
-    results_df = benchmark.run_benchmark(model_paths, save_results=True)
-    benchmark.print_summary()
-
-    return results_df
 
 
 def find_trained_models(results_dir: str = "results/models") -> Dict[str, str]:
